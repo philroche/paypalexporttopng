@@ -10,9 +10,43 @@ import logging
 #workon paypalhistoryexport
 #pip install Ghost.py PySide
 #sudo ulimit -SHn 65535
+#sudo sh -c "ulimit -SHn 65535"
 #python runexport.py
 
-from settings import PAYPAL_USERNAME, PAYPAL_NAME, PAYPAL_PASSWORD, EXPORT_DIRECTORY, CACHE_DIRECTORY
+from settings import PAYPAL_USERNAME, PAYPAL_NAME, PAYPAL_PASSWORD, EXPORT_DIRECTORY, CACHE_DIRECTORY, START_DATE, END_DATE
+
+def getHistoryListing(ghost):
+    #GOTO history page
+    page, resources = ghost.open('https://www.paypal.com/ie/cgi-bin/webscr?cmd=_history&nav=0.3')
+    ghost.wait_for_text("History")
+
+
+
+    ghost.click('#dateoptions')
+
+    ghost.evaluate("""  var elem = document.getElementById("from_date");
+                        elem.value = "%s";
+                        elem = document.getElementById("to_date");
+                        elem.value = "%s";
+                    """ % (START_DATE, END_DATE))
+
+    page, resources = ghost.evaluate("document.getElementById('show').click();", expect_loading=True)
+    #page, resources = ghost.fire_on("form[name=history]", "submit", expect_loading=True)
+    ghost.wait_for_page_loaded()
+
+    #only show payments sent
+    # ghost.evaluate('''
+    #     var name_input = document.createElement('input');
+		# name_input.setAttribute('name', 'name');
+    #     name_input.setAttribute('id',   'name');
+    #     name_input.setAttribute('value',   'filter_4');
+    #     document.getElementsByName("history")[0].appendChild(name_input);
+		# ''')
+    #
+    # page, resources = ghost.evaluate("document.getElementById('show').click();", expect_loading=True)
+    ghost.evaluate('document.getElementsByName("filter_4")[0].click()',expect_loading=True)
+    #page, resources = ghost.fire_on("form[name=history]", "submit", expect_loading=True)
+    ghost.wait_for_page_loaded()
 
 
 def RunExport():
@@ -22,7 +56,7 @@ def RunExport():
     #login_password
     #submit.x
     #submit
-    page, resources = ghost.open('https://www.paypal.com/ie/webapps/mpp/home')
+    page, resources = ghost.open('https://www.paypal.com/ie/cgi-bin/webscr?cmd=_login-run')
 
     result, resources = ghost.fill("form[name=login_form]", {
             "login_email": PAYPAL_USERNAME,
@@ -39,43 +73,13 @@ def RunExport():
     result, resources = ghost.wait_for_text("Welcome, %s" % PAYPAL_NAME)
 
 
-    #GOTO history page
-    page, resources = ghost.open('https://www.paypal.com/ie/cgi-bin/webscr?cmd=_history&nav=0.3')
-    ghost.wait_for_text("History")
-
-
-
-    ghost.click('#dateoptions')
-
-    ghost.evaluate("""
-                        var elem = document.getElementById("from_date");
-                        elem.value = "01/01/2012";
-                        elem = document.getElementById("to_date");
-                        elem.value = "15/08/2013";
-                    """)
-
-
-    page, resources = ghost.fire_on("form[name=history]", "submit", expect_loading=True)
-    ghost.wait_for_page_loaded()
-
-    ghost.evaluate('''
-        var name_input = document.createElement('input');
-		name_input.setAttribute('name', 'name');
-        name_input.setAttribute('id',   'name');
-        name_input.setAttribute('value',   'filter_4');
-        document.getElementsByName("history")[0].appendChild(name_input);
-		''')
-
-    #ghost.evaluate('document.getElementsByName("filter_4")[0].click()')
-    page, resources = ghost.fire_on("form[name=history]", "submit", expect_loading=True)
-    ghost.wait_for_page_loaded()
-
+    getHistoryListing(ghost)
 
     first_run = True
     #get the next url
     #print ghost.evaluate('document.querySelectorAll("#tableWrapperID .pagination:nth-child(1) a.btnLink");')[0]
     nav_links_eval = """
-                        var links = document.querySelectorAll(".pagination a.btnLink");
+                      var links = document.querySelectorAll(".pagination a.btnLink");
                         links.length;
                     """
     nav_links = ghost.evaluate(nav_links_eval)
@@ -106,13 +110,13 @@ def RunExport():
             payee_name = None
             date_string = None
             date = ghost.evaluate("""
-                           document.querySelectorAll("#historyMiniLog tbody tr:nth-child(2) td")[0].innerHTML;
+                           document.querySelectorAll("#historyMiniLog tbody tr")[2].querySelectorAll('td')[0].innerHTML;
                         """)
             if date and date[0]:
                 date_string = date[0].replace('&nbsp;','')
 
             payee = ghost.evaluate("""
-                           document.querySelectorAll("#historyMiniLog tbody tr:nth-child(2) td")[1].innerHTML;
+                           document.querySelectorAll("#historyMiniLog tbody tr")[2].querySelectorAll('td')[1].innerHTML;
                         """)
             if payee and payee[0]:
                 payee_name = payee[0].replace('&nbsp;','')
@@ -128,23 +132,15 @@ def RunExport():
                 print 'could not save'
 
 
-        #go back to the transaction listings url
-        ghost.evaluate('''
-            var name_input = document.createElement('input');
-            name_input.setAttribute('name', 'name');
-            name_input.setAttribute('id',   'name');
-            name_input.setAttribute('value',   'cancel.x');
-            document.getElementsByName("main4")[0].appendChild(name_input);
-		''')
-        page, resources = ghost.fire_on("form[name=main4]", "submit", expect_loading=True)
-        ghost.wait_for_page_loaded()
+        getHistoryListing(ghost)
+
         #we're back on page one now so we need to get back to where we were
         for x in range(0, page_count):
             ghost.evaluate("""
                 document.getElementById('myAllTextSubmitID').name = 'next';
                 document.getElementById('myAllTextSubmitID').value = 'Next';
-                """)
-            page, resources = ghost.fire_on("form[name=history]", "submit", expect_loading=True)
+                document.forms.history.submit();
+                """, expect_loading=True)
             ghost.wait_for_page_loaded()
         #transaction_list_url = resources[0].url
         nav_links = ghost.evaluate(nav_links_eval)
