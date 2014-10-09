@@ -5,3 +5,4 @@ EXPORT_DIRECTORY = '/home/myname/'
 CACHE_DIRECTORY = '/home/myname/'
 START_DATE = "11/08/2013"
 END_DATE = "08/10/2014"
+START_AT_PAGE = 0

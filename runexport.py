@@ -1,10 +1,9 @@
 import os
-import time
+import re
 import urllib
 from ghost import Ghost
 from datetime import datetime
 
-import logging
 #Ghost.py and PySide required
 #mkvirtualenv paypalhistoryexport --no-site-packages --python=/usr/bin/python2.7
 #workon paypalhistoryexport
@@ -13,8 +12,40 @@ import logging
 #sudo sh -c "ulimit -SHn 99999"
 #python runexport.py
 
-from settings import PAYPAL_USERNAME, PAYPAL_NAME, PAYPAL_PASSWORD, EXPORT_DIRECTORY, CACHE_DIRECTORY, START_DATE, END_DATE
+from settings import PAYPAL_USERNAME, PAYPAL_NAME, PAYPAL_PASSWORD, EXPORT_DIRECTORY, CACHE_DIRECTORY, START_DATE, END_DATE, START_AT_PAGE
 
+_slugify_strip_re = re.compile(r'[^\w\s-]')
+_slugify_hyphenate_re = re.compile(r'[-\s]+')
+
+def _slugify(value):
+    """
+    Normalizes string, converts to lowercase, removes non-alpha characters,
+    and converts spaces to hyphens.
+
+    From Django's "django/template/defaultfilters.py".
+    """
+    import unicodedata
+    if not isinstance(value, unicode):
+        value = unicode(value)
+    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore')
+    value = unicode(_slugify_strip_re.sub('', value).strip())
+    return _slugify_hyphenate_re.sub('-', value)
+
+def safeFilename(filename):
+    keepcharacters = (' ','.','_')
+    return _slugify("".join(c for c in filename if c.isalnum() or c in keepcharacters).rstrip())
+
+
+def goToPage(ghost,page_count):
+    #we're back on page one now so we need to get back to where we were
+    if page_count > 0:
+        for x in range(0, page_count):
+            ghost.evaluate("""
+                document.getElementById('myAllTextSubmitID').name = 'next';
+                document.getElementById('myAllTextSubmitID').value = 'Next';
+                document.forms.history.submit();
+                """, expect_loading=True)
+            ghost.wait_for_page_loaded()
 def getHistoryListing(ghost):
     #GOTO history page
     page, resources = ghost.open('https://www.paypal.com/ie/cgi-bin/webscr?cmd=_history&nav=0.3')
@@ -83,13 +114,20 @@ def RunExport():
                         links.length;
                     """
     nav_links = ghost.evaluate(nav_links_eval)
-    page_count = 0
+    page_count = START_AT_PAGE
     transaction_count = 0
+    if page_count > 0:
+        transaction_count = page_count * 20
+
     #transaction_list_url = resources[0].url
     #print transaction_list_url
     while nav_links[0] > 0 or first_run==True:
         first_run = False
+
+        goToPage(ghost,page_count)
+
         page_count = page_count + 1
+
         filteredlisting_export = os.path.join(EXPORT_DIRECTORY,'filteredhistory%d.png' % page_count)
         if not os.path.isfile(filteredlisting_export):
             ghost.capture_to(filteredlisting_export, selector="body")
@@ -122,24 +160,29 @@ def RunExport():
                            document.querySelectorAll("#historyMiniLog tbody tr")[2].querySelectorAll('td')[1].innerHTML;
                         """)
             if payee and payee[0]:
-                payee_name = payee[0].replace('&nbsp;','')
+                payee_name = safeFilename(payee[0].replace('&nbsp;',''))
 
             if payee_name and date_string:
 
                 date_object = datetime.strptime(date_string, '%d-%b-%Y')
                 date_string=datetime.strftime(date_object,'%Y-%m-%d')
-                print 'page %d transaction %d [%s - %s]' % (page_count, transaction_count, date_string,payee_name)
+                print 'page %d transaction %d [%s - %s]' % (page_count, transaction_count, date_string, payee_name)
 
                 purchasedetails_export = os.path.join(EXPORT_DIRECTORY,'%s_%s_%s.png' % (date_string,payee_name,transaction_count ))
-                print '\t\tsaving to %s' % purchasedetails_export
+
                 if not os.path.isfile(purchasedetails_export):
+                    print '\t\tsaving to %s' % purchasedetails_export
                     ghost.capture_to(purchasedetails_export, selector="#xptContentMain")
+                else:
+                    print '\t\tAlready saved to %s' % purchasedetails_export
 
             else:
                 purchasedetails_export = os.path.join(EXPORT_DIRECTORY,'no date and payee - page-%d_ transaction %d.png' % (page_count,transaction_count ))
                 print '\t\tsaving to %s' % purchasedetails_export
                 if not os.path.isfile(purchasedetails_export):
                     ghost.capture_to(purchasedetails_export, selector="#xptContentMain")
+                else:
+                    print '\t\tAlready saved to %s' % purchasedetails_export
 
                 print 'could not get payee_name and date_string'
                 print '\t\tsaving to %s' % purchasedetails_export
@@ -148,14 +191,7 @@ def RunExport():
 
         getHistoryListing(ghost)
 
-        #we're back on page one now so we need to get back to where we were
-        for x in range(0, page_count):
-            ghost.evaluate("""
-                document.getElementById('myAllTextSubmitID').name = 'next';
-                document.getElementById('myAllTextSubmitID').value = 'Next';
-                document.forms.history.submit();
-                """, expect_loading=True)
-            ghost.wait_for_page_loaded()
+        goToPage(ghost,page_count)
         #transaction_list_url = resources[0].url
         nav_links = ghost.evaluate(nav_links_eval)
 
