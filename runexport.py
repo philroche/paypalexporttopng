@@ -9,8 +9,8 @@ import logging
 #mkvirtualenv paypalhistoryexport --no-site-packages --python=/usr/bin/python2.7
 #workon paypalhistoryexport
 #pip install Ghost.py PySide
-#sudo ulimit -SHn 65535
-#sudo sh -c "ulimit -SHn 65535"
+#sudo ulimit -SHn 99999
+#sudo sh -c "ulimit -SHn 99999"
 #python runexport.py
 
 from settings import PAYPAL_USERNAME, PAYPAL_NAME, PAYPAL_PASSWORD, EXPORT_DIRECTORY, CACHE_DIRECTORY, START_DATE, END_DATE
@@ -84,12 +84,15 @@ def RunExport():
                     """
     nav_links = ghost.evaluate(nav_links_eval)
     page_count = 0
+    transaction_count = 0
     #transaction_list_url = resources[0].url
     #print transaction_list_url
     while nav_links[0] > 0 or first_run==True:
         first_run = False
         page_count = page_count + 1
-        ghost.capture_to(os.path.join(EXPORT_DIRECTORY,'filteredhistory%d.png' % page_count), selector="body")
+        filteredlisting_export = os.path.join(EXPORT_DIRECTORY,'filteredhistory%d.png' % page_count)
+        if not os.path.isfile(filteredlisting_export):
+            ghost.capture_to(filteredlisting_export, selector="body")
 
         transaction_urls = ghost.evaluate("""
                             var links = document.querySelectorAll("#transactionTable tr.primary td.detailsNoPrint a");
@@ -100,7 +103,7 @@ def RunExport():
                             listRet;
                             """)
 
-        transaction_count = 0
+
         for transaction_href in transaction_urls[0]:
             transaction_count = transaction_count + 1
             #print urllib.unquote(transaction_href)
@@ -126,10 +129,21 @@ def RunExport():
                 date_object = datetime.strptime(date_string, '%d-%b-%Y')
                 date_string=datetime.strftime(date_object,'%Y-%m-%d')
                 print 'page %d transaction %d [%s - %s]' % (page_count, transaction_count, date_string,payee_name)
-                ghost.capture_to(os.path.join(EXPORT_DIRECTORY,'%s_%s.png' % (date_string,payee_name )), selector="#xptContentMain")
+
+                purchasedetails_export = os.path.join(EXPORT_DIRECTORY,'%s_%s_%s.png' % (date_string,payee_name,transaction_count ))
+                print '\t\tsaving to %s' % purchasedetails_export
+                if not os.path.isfile(purchasedetails_export):
+                    ghost.capture_to(purchasedetails_export, selector="#xptContentMain")
+
             else:
-                ghost.capture_to(os.path.join(EXPORT_DIRECTORY,'no date and payee - page-%d_ transaction %d.png' % (page_count,transaction_count )), selector="#xptContentMain")
-                print 'could not save'
+                purchasedetails_export = os.path.join(EXPORT_DIRECTORY,'no date and payee - page-%d_ transaction %d.png' % (page_count,transaction_count ))
+                print '\t\tsaving to %s' % purchasedetails_export
+                if not os.path.isfile(purchasedetails_export):
+                    ghost.capture_to(purchasedetails_export, selector="#xptContentMain")
+
+                print 'could not get payee_name and date_string'
+                print '\t\tsaving to %s' % purchasedetails_export
+
 
 
         getHistoryListing(ghost)
