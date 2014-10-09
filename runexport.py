@@ -119,12 +119,12 @@ def RunExport():
     if page_count > 0:
         transaction_count = page_count * 20
 
+    goToPage(ghost,page_count)
+
     #transaction_list_url = resources[0].url
     #print transaction_list_url
     while nav_links[0] > 0 or first_run==True:
         first_run = False
-
-        goToPage(ghost,page_count)
 
         page_count = page_count + 1
 
